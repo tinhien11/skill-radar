@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 
 let FAKE_HOME: string;
 let REAL_HOME: string;
+let REAL_XDG: string | undefined;
 
 function mkSkill(root: string, name: string, description: string, body: string = "# skill") {
   const dir = join(root, name);
@@ -44,11 +45,20 @@ beforeEach(() => {
   FAKE_HOME = join(tmpdir(), `skill-radar-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(FAKE_HOME, { recursive: true });
   REAL_HOME = process.env.HOME!;
+  REAL_XDG = process.env.XDG_CONFIG_HOME;
   process.env.HOME = FAKE_HOME;
+  // XDG_CONFIG_HOME on Linux CI can override ~/.config — unset so our
+  // FAKE_HOME/.config/devin/skills is the one scanner finds.
+  delete process.env.XDG_CONFIG_HOME;
+  // Also clear Claude/Codex env overrides that agents.ts honors.
+  delete process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.CODEX_HOME;
 });
 
 afterEach(() => {
   process.env.HOME = REAL_HOME;
+  if (REAL_XDG !== undefined) process.env.XDG_CONFIG_HOME = REAL_XDG;
+  else delete process.env.XDG_CONFIG_HOME;
   rmSync(FAKE_HOME, { recursive: true, force: true });
 });
 
