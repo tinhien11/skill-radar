@@ -1,0 +1,47 @@
+{
+  "name": "skill-radar",
+  "version": "0.1.0",
+  "description": "Cross-agent skill health radar for AI coding agents. Hook-free usage scoring from real prompt history, content-hash dedup, bulk cleanup TUI.",
+  "type": "module",
+  "bin": {
+    "skill-radar": "./dist/cli.js",
+    "sr": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "skills",
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "devin",
+    "cursor",
+    "windsurf",
+    "dedup",
+    "cleanup",
+    "context-window"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/react": "^18.3.5",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
