@@ -7,6 +7,20 @@
     "skill-radar": "./dist/cli.js",
     "sr": "./dist/cli.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tinhien11/skill-radar.git"
+  },
+  "homepage": "https://github.com/tinhien11/skill-radar",
+  "bugs": {
+    "url": "https://github.com/tinhien11/skill-radar/issues"
+  },
+  "author": "tinhien11",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
