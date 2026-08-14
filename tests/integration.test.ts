@@ -778,3 +778,49 @@ describe("TUI search/filter logic", () => {
     expect(filtered.length).toBe(skills.length);
   });
 });
+
+describe("autofix", () => {
+  test("autofix with --no-dead only removes broken + duplicates, keeps dead skills", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "dead-skill-keep", "should survive --no-dead", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: false, dryRun: false, backup: true });
+    expect(res.deadRemoved).toBe(0);
+    expect(existsSync(join(agentsDir, "dead-skill-keep"))).toBe(true);
+  });
+
+  test("autofix --dry-run does not delete anything", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "survive-dry", "should survive dry run", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true, dryRun: true, backup: true });
+    expect(existsSync(join(agentsDir, "survive-dry"))).toBe(true);
+  });
+
+  test("autofix with backup creates backup before deleting dead skills", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "autofix-dead", "will be removed with backup", "# important content");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true, dryRun: false, backup: true });
+    expect(res.deadRemoved).toBeGreaterThanOrEqual(1);
+    expect(res.backup).toBeDefined();
+    expect(res.backup!.backedUp).toBeGreaterThanOrEqual(1);
+    expect(existsSync(join(agentsDir, "autofix-dead"))).toBe(false);
+  });
+
+  test("autofix --no-backup skips backup", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "no-backup-test", "no backup", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true, dryRun: false, backup: false });
+    expect(res.backup).toBeUndefined();
+  });
+});

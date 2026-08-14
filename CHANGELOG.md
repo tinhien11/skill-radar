@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-14
+
+### Added
+- `skill-radar autofix` — one-shot command that does everything: backup + remove broken symlinks + dedup + remove dead skills. Safe by default (backs up before deleting). Flags: `--dry-run`, `--no-dead`, `--no-backup`.
+
 ## [0.3.0] - 2026-08-14
 
 ### Added

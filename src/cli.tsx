@@ -207,6 +207,46 @@ program
   });
 
 program
+  .command("autofix")
+  .description("One-shot: backup + remove broken symlinks + dedup + remove dead skills. Safe by default.")
+  .option("--dry-run", "preview what would be done without changing anything")
+  .option("--no-dead", "skip removing dead skills (only fix broken + duplicates)")
+  .option("--no-backup", "skip backup before deleting (NOT recommended)")
+  .action((opts) => {
+    const doBackup = opts.backup !== false; // default true
+    const removeDead = opts.dead !== false; // default true
+    const res = clean({ dead: removeDead, dryRun: opts.dryRun, backup: doBackup });
+    const G = "\x1b[32m", R = "\x1b[31m", Y = "\x1b[33m", D = "\x1b[2m", B = "\x1b[1m", X = "\x1b[0m";
+    const verb = opts.dryRun ? "would fix" : "fixed";
+    process.stdout.write(`\n  ${B}autofix${X} ${D}${opts.dryRun ? "(dry run)" : ""}${X}\n\n`);
+
+    if (res.brokenRemoved > 0) {
+      process.stdout.write(`  ${R}${res.brokenRemoved}${X} ${D}broken symlinks ${verb}${X}\n`);
+    }
+    if (res.duplicatesRemoved > 0) {
+      process.stdout.write(`  ${Y}${res.duplicatesRemoved}${X} ${D}duplicate copies ${verb} (canonical kept)${X}\n`);
+    }
+    if (res.deadRemoved > 0) {
+      process.stdout.write(`  ${R}${res.deadRemoved}${X} ${D}dead skills ${verb}${X}\n`);
+    }
+    const total = res.brokenRemoved + res.duplicatesRemoved + res.deadRemoved;
+    if (total === 0) {
+      process.stdout.write(`  ${G}nothing to fix — already healthy${X}\n`);
+    }
+    process.stdout.write(`\n  ${B}${res.totalBefore}→${res.totalAfter}${X} ${D}skill entries${X}\n`);
+    if (res.backup && res.backup.backedUp > 0) {
+      process.stdout.write(`  ${G}${res.backup.backedUp}${X} ${D}skills backed up to ${res.backup.backupDir}${X}\n`);
+    } else if (doBackup && !opts.dryRun && total > 0) {
+      process.stdout.write(`  ${D}no backup needed (only broken symlinks removed)${X}\n`);
+    }
+    if (res.errors.length > 0) {
+      process.stdout.write(`\n  ${R}${res.errors.length} errors:${X}\n`);
+      for (const e of res.errors) process.stdout.write(`    ${e}\n`);
+    }
+    process.stdout.write("\n");
+  });
+
+program
   .command("init")
   .description("First-run setup wizard: check agents, verify history access, explain output.")
   .action(() => {

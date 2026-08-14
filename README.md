@@ -74,6 +74,11 @@ skill-radar clean --dry-run      # preview without deleting
 # generate markdown report (shareable, for teams/docs/GitHub)
 skill-radar report
 skill-radar report -o report.md  # write to file
+
+# one-shot auto-fix everything: backup + clean broken + dedup + remove dead
+skill-radar autofix              # safe by default (backs up before deleting)
+skill-radar autofix --dry-run    # preview without changing
+skill-radar autofix --no-dead    # only fix broken + duplicates, keep dead skills
 ```
 
 ### TUI keybindings
