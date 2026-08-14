@@ -21,6 +21,7 @@ import { rmSync, lstatSync, unlinkSync } from "node:fs";
 import { buildReport, type Report } from "./report.js";
 import { scanAll } from "./scanner.js";
 import { renderSummary, renderScoreTable } from "./render.js";
+import { backupSkills, pruneBackups } from "./backup.js";
 
 // Visible rows in the list window. Terminal height varies; 20 is a safe default
 // that leaves room for the header, trend, stat row, column header, and footer.
@@ -147,6 +148,18 @@ const App: React.FC = () => {
         }
         // Every raw skill entry whose name matches — across all agent roots.
         const toDelete = rawSkills.filter((s) => targetNames.has(s.name));
+
+        // BACKUP before deleting: only skills with real content (hasSkillMd).
+        // Broken symlinks and empty dirs don't need backup. This matches
+        // the `autofix` / `clean --backup` behavior — safe by default.
+        const toBackup = toDelete.filter((s) => s.hasSkillMd);
+        let backupDir = "";
+        if (toBackup.length > 0) {
+          const bk = backupSkills(toBackup);
+          pruneBackups(10);
+          backupDir = bk.backupDir;
+        }
+
         const deletedNames: string[] = [];
         const deletedAgents: string[] = [];
         const skipped: string[] = [];
@@ -191,9 +204,10 @@ const App: React.FC = () => {
               : `${deletedAgents.slice(0, 4).join("/")}+${deletedAgents.length - 4}`;
             const skipNote = skipped.length > 0 ? ` · skipped ${skipped.length} non-deletable` : "";
             const unlinkNote = unlinked > 0 ? ` · ${unlinked} symlink${unlinked > 1 ? "s" : ""} unlinked` : "";
+            const backupNote = backupDir ? ` · backed up` : "";
             const copyWord = n === 1 ? "copy" : "copies";
             const skillWord = deletedNames.length === 1 ? "skill" : "skills";
-            setMsg(`deleted ${n} ${copyWord} of ${deletedNames.length} ${skillWord} across ${agents} — ${before}→${after} skills${unlinkNote}${skipNote}`);
+            setMsg(`deleted ${n} ${copyWord} of ${deletedNames.length} ${skillWord} across ${agents} — ${before}→${after} skills${unlinkNote}${skipNote}${backupNote}`);
           }, 50);
         } else {
           setMsg(skipped.length > 0
@@ -450,20 +464,20 @@ const App: React.FC = () => {
                   const deadNames = new Set(displayRows.filter((x) => x.isDead).map((x) => x.name));
                   const copies = raw.filter((s) => deadNames.has(s.name));
                   const agents = [...new Set(copies.map((s) => s.agent))];
-                  return `  DELETE ${deadNames.size} dead skill${deadNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")})? y/n`;
+                  return `  DELETE ${deadNames.size} dead skill${deadNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")}) — backed up first? y/n`;
                 }
                 if (confirm === "marked") {
                   const markedNames = new Set([...marked].map((i) => displayRows[i]?.name).filter(Boolean));
                   const copies = raw.filter((s) => markedNames.has(s.name));
                   const agents = [...new Set(copies.map((s) => s.agent))];
-                  return `  DELETE ${markedNames.size} skill${markedNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")})? y/n`;
+                  return `  DELETE ${markedNames.size} skill${markedNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")}) — backed up first? y/n`;
                 }
                 const name = displayRows[cursor]?.name;
                 const copies = raw.filter((s) => s.name === name);
                 const agents = [...new Set(copies.map((s) => s.agent))];
                 return copies.length > 1
-                  ? `  DELETE "${name}" (${copies.length} copies: ${agents.join("/")})? y/n`
-                  : `  DELETE "${name}"? y/n`;
+                  ? `  DELETE "${name}" (${copies.length} copies: ${agents.join("/")}) — backed up first? y/n`
+                  : `  DELETE "${name}" — backed up first? y/n`;
               })()
             : `  ↑↓/jk move · d delete · D DELETE ALL DEAD · i inspect · / search · r rescan · q quit`}
         </Text>
