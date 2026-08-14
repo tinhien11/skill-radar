@@ -7,6 +7,7 @@
 //   D        delete ALL dead skills + all their copies (the big win — one keystroke)
 //   space    toggle mark
 //   x        delete all marked
+//   /        search/filter by name or description (Esc to clear)
 //   r        re-scan (score jumps live — the pleasure loop)
 //   q        quit
 // The header shows health score + wasted tokens, updating after each delete.
@@ -14,7 +15,7 @@
 // skills are reachable — no "…more" dead end. The cursor row expands to show
 // a short description inline; press `i` for the full description + metadata.
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { render, Box, Text, useInput, useApp } from "ink";
 import { rmSync, lstatSync, unlinkSync } from "node:fs";
 import { buildReport, type Report } from "./report.js";
@@ -67,6 +68,8 @@ const App: React.FC = () => {
   const [msg, setMsg] = useState<string>("");
   const [confirm, setConfirm] = useState<null | "current" | "dead" | "marked">(null);
   const [inspect, setInspect] = useState(false); // 'i' toggles full-description view
+  const [search, setSearch] = useState(""); // search query string
+  const [searchMode, setSearchMode] = useState(false); // when true, typing builds search query
   const { exit } = useApp();
 
   const refresh = useCallback(() => {
@@ -83,7 +86,48 @@ const App: React.FC = () => {
     refresh();
   }, [refresh]);
 
+  // Filtered rows for search. useMemo so useInput closure sees current value.
+  const displayRows = useMemo(() => {
+    if (!search) return rows;
+    const q = search.toLowerCase();
+    return rows.filter((r) =>
+      r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
+    );
+  }, [rows, search]);
+
   useInput((input, key) => {
+    // Search mode: type to filter, Esc/Enter to exit search mode, backspace to delete
+    if (searchMode) {
+      if (key.escape) {
+        setSearchMode(false);
+        setSearch("");
+        setCursor(0);
+        setOffset(0);
+        setMsg("");
+        return;
+      }
+      if (key.return) {
+        setSearchMode(false);
+        setCursor(0);
+        setOffset(0);
+        setMsg(search ? `${displayRows.length} matches for "${search}"` : "");
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setSearch((s) => s.slice(0, -1));
+        setCursor(0);
+        setOffset(0);
+        return;
+      }
+      if (input && !key.ctrl && !key.meta && input.length === 1 && input !== "/") {
+        setSearch((s) => s + input);
+        setCursor(0);
+        setOffset(0);
+        return;
+      }
+      return;
+    }
+
     if (confirm) {
       if (input === "y" || input === "Y") {
         // CRITICAL: scan fresh RAW (not deduped scores) so we catch EVERY copy
@@ -94,12 +138,12 @@ const App: React.FC = () => {
         const rawSkills = scanAll().skills;
         const targetNames = new Set<string>();
         if (confirm === "current") {
-          const name = rows[cursor]?.name;
+          const name = displayRows[cursor]?.name;
           if (name) targetNames.add(name);
         } else if (confirm === "dead") {
-          rows.filter((x) => x.isDead).forEach((x) => targetNames.add(x.name));
+          displayRows.filter((x) => x.isDead).forEach((x) => targetNames.add(x.name));
         } else if (confirm === "marked") {
-          [...marked].map((i) => rows[i]?.name).filter(Boolean).forEach((n) => targetNames.add(n as string));
+          [...marked].map((i) => displayRows[i]?.name).filter(Boolean).forEach((n) => targetNames.add(n as string));
         }
         // Every raw skill entry whose name matches — across all agent roots.
         const toDelete = rawSkills.filter((s) => targetNames.has(s.name));
@@ -169,7 +213,7 @@ const App: React.FC = () => {
     // Navigation. We keep the cursor inside the visible window by adjusting
     // `offset` whenever the cursor would leave [offset, offset+PAGE_SIZE).
     const moveCursor = (next: number) => {
-      const clamped = Math.max(0, Math.min(rows.length - 1, next));
+      const clamped = Math.max(0, Math.min(displayRows.length - 1, next));
       setCursor(clamped);
       // Scroll window if cursor escapes it.
       setOffset((o) => {
@@ -211,19 +255,25 @@ const App: React.FC = () => {
       exit();
       return;
     }
+    if (input === "/") {
+      setSearchMode(true);
+      setSearch("");
+      setMsg("search: (type to filter, Esc to clear)");
+      return;
+    }
     if (input === "r") {
       refresh();
       return;
     }
     if (input === "d") {
-      const row = rows[cursor];
+      const row = displayRows[cursor];
       if (!row) return;
       if (!row.deletable) {
         setMsg(`not deletable (no SKILL.md and not a symlink)`);
         return;
       }
       // If this is a dead skill, hint that D would nuke all dead at once.
-      const deadCount = rows.filter((x) => x.isDead && x.deletable).length;
+      const deadCount = displayRows.filter((x) => x.isDead && x.deletable).length;
       if (row.isDead && deadCount > 1) {
         setConfirm("current");
         setMsg(`tip: press D to delete all ${deadCount} dead skills at once`);
@@ -233,7 +283,7 @@ const App: React.FC = () => {
       return;
     }
     if (input === "D") {
-      const dead = rows.filter((x) => x.isDead && x.deletable);
+      const dead = displayRows.filter((x) => x.isDead && x.deletable);
       if (dead.length === 0) {
         setMsg("no dead deletable skills");
         return;
@@ -303,26 +353,26 @@ const App: React.FC = () => {
         </Text>
       </Box>
 
-      {inspect && rows[cursor] ? (
+      {inspect && displayRows[cursor] ? (
         // Inspect mode: full description + metadata for the cursor row.
         <Box flexDirection="column" marginTop={1}>
           <Box>
-            <Text bold color="cyan">  {rows[cursor].name}</Text>
-            <Text dimColor>  ({rows[cursor].agent})</Text>
+            <Text bold color="cyan">  {displayRows[cursor].name}</Text>
+            <Text dimColor>  ({displayRows[cursor].agent})</Text>
           </Box>
           <Box>
             <Text dimColor>  path: </Text>
-            <Text>{rows[cursor].path}</Text>
+            <Text>{displayRows[cursor].path}</Text>
           </Box>
           <Box>
             <Text dimColor>  waste: </Text>
-            <Text color={rows[cursor].waste >= 60 ? "red" : rows[cursor].waste >= 30 ? "yellow" : "green"}>
-              {rows[cursor].waste}
+            <Text color={displayRows[cursor].waste >= 60 ? "red" : displayRows[cursor].waste >= 30 ? "yellow" : "green"}>
+              {displayRows[cursor].waste}
             </Text>
-            <Text dimColor>  · used: {rows[cursor].used}  · verdict: {rows[cursor].verdict}</Text>
+            <Text dimColor>  · used: {displayRows[cursor].used}  · verdict: {displayRows[cursor].verdict}</Text>
           </Box>
           <Box marginTop={1}>
-            <Text>  {rows[cursor].description || "(no description)"}</Text>
+            <Text>  {displayRows[cursor].description || "(no description)"}</Text>
           </Box>
           <Box marginTop={1}>
             <Text dimColor>  press i to return to list · d to delete · q to quit</Text>
@@ -330,7 +380,7 @@ const App: React.FC = () => {
         </Box>
       ) : (
         <Box flexDirection="column">
-          {rows.slice(offset, offset + PAGE_SIZE).map((row, vi) => {
+          {displayRows.slice(offset, offset + PAGE_SIZE).map((row, vi) => {
             const i = offset + vi; // absolute index
             const isCur = i === cursor;
             const isMarked = marked.has(i);
@@ -364,13 +414,27 @@ const App: React.FC = () => {
       )}
 
       {/* Scroll indicator — hidden in inspect mode. */}
-      {!inspect && rows.length > PAGE_SIZE && (
+      {!inspect && displayRows.length > PAGE_SIZE && (
         <Box>
           <Text dimColor>
             {"  "}
-            {offset + 1}-{Math.min(offset + PAGE_SIZE, rows.length)} of {rows.length}{" "}
-            {offset > 0 ? "↑" : " "} {offset + PAGE_SIZE < rows.length ? "↓" : " "}
+            {offset + 1}-{Math.min(offset + PAGE_SIZE, displayRows.length)} of {displayRows.length}
+            {search ? ` (filtered from ${rows.length})` : ""}{" "}
+            {offset > 0 ? "↑" : " "} {offset + PAGE_SIZE < displayRows.length ? "↓" : " "}
             {cursor + 1 !== offset + 1 && offset + PAGE_SIZE !== cursor + 1 ? `· cursor #${cursor + 1}` : ""}
+          </Text>
+        </Box>
+      )}
+
+      {/* Search input line — visible when in search mode or when search is active. */}
+      {(searchMode || search) && (
+        <Box>
+          <Text dimColor>
+            {"  "}
+            {searchMode ? "search: " : "filter: "}
+            <Text color="cyan">{search}</Text>
+            {searchMode ? "_" : ""}
+            <Text dimColor> ({displayRows.length} matches)</Text>
           </Text>
         </Box>
       )}
@@ -383,25 +447,25 @@ const App: React.FC = () => {
                 // the deduped rows — so the confirm prompt is accurate.
                 const raw = scanAll().skills;
                 if (confirm === "dead") {
-                  const deadNames = new Set(rows.filter((x) => x.isDead).map((x) => x.name));
+                  const deadNames = new Set(displayRows.filter((x) => x.isDead).map((x) => x.name));
                   const copies = raw.filter((s) => deadNames.has(s.name));
                   const agents = [...new Set(copies.map((s) => s.agent))];
                   return `  DELETE ${deadNames.size} dead skill${deadNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")})? y/n`;
                 }
                 if (confirm === "marked") {
-                  const markedNames = new Set([...marked].map((i) => rows[i]?.name).filter(Boolean));
+                  const markedNames = new Set([...marked].map((i) => displayRows[i]?.name).filter(Boolean));
                   const copies = raw.filter((s) => markedNames.has(s.name));
                   const agents = [...new Set(copies.map((s) => s.agent))];
                   return `  DELETE ${markedNames.size} skill${markedNames.size > 1 ? "s" : ""} (${copies.length} copies: ${agents.join("/")})? y/n`;
                 }
-                const name = rows[cursor]?.name;
+                const name = displayRows[cursor]?.name;
                 const copies = raw.filter((s) => s.name === name);
                 const agents = [...new Set(copies.map((s) => s.agent))];
                 return copies.length > 1
                   ? `  DELETE "${name}" (${copies.length} copies: ${agents.join("/")})? y/n`
                   : `  DELETE "${name}"? y/n`;
               })()
-            : `  ↑↓/jk move · d delete this skill (all copies) · D DELETE ALL DEAD · i inspect · r rescan · q quit`}
+            : `  ↑↓/jk move · d delete · D DELETE ALL DEAD · i inspect · / search · r rescan · q quit`}
         </Text>
       </Box>
       {msg && (

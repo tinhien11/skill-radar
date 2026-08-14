@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+
 ### Added
+- `--json` output mode for `scan`, `score`, `dedup`, `doctor`, `history` commands — enables scripting, CI/CD, and custom dashboards
+- `skill-radar init` — first-run setup wizard that checks agent directories, verifies history access, runs a quick scan, and explains next steps
+- `skill-radar report` — generates a shareable markdown report with health summary, waste ranking, duplicates, issues, and recommendations (`-o` flag to write to file)
+- `doctor --fix` — auto-remediation: removes broken symlinks and duplicate copies (with `--dry-run` support)
+- TUI search/filter — press `/` to search by name or description, `Esc` to clear, live filtering as you type
 - LICENSE file (MIT)
 - CHANGELOG.md
 - `--backup` flag for `clean` command — copies skills to `~/.local/share/skill-radar/backups/` before deletion

@@ -38,23 +38,42 @@ npx skill-radar scan
 ## Usage
 
 ```bash
-# default: interactive TUI (list view, bulk delete)
+# default: interactive TUI (list view, bulk delete, search/filter)
 skill-radar
+
+# first-run setup wizard (check agents, verify history, explain output)
+skill-radar init
 
 # one-shot health report (persists a snapshot for trend)
 skill-radar scan
+skill-radar scan --json    # JSON output for scripting/CI
 
 # full waste ranking (all skills)
 skill-radar score
+skill-radar score --json
 
 # show duplicates (content clones, name collisions, symlink aliases)
 skill-radar dedup
+skill-radar dedup --json
 
 # structural issues (broken symlinks, missing SKILL.md, empty dirs)
 skill-radar doctor
+skill-radar doctor --fix         # auto-fix: remove broken symlinks + dedup
+skill-radar doctor --fix --dry-run
+skill-radar doctor --json
 
 # scan history (the compounding trend)
 skill-radar history
+skill-radar history --json
+
+# auto-cleanup: remove broken symlinks + duplicate copies (keep canonical)
+skill-radar clean --backup       # back up before deleting
+skill-radar clean --dead --backup  # also remove skills with no manual invoke
+skill-radar clean --dry-run      # preview without deleting
+
+# generate markdown report (shareable, for teams/docs/GitHub)
+skill-radar report
+skill-radar report -o report.md  # write to file
 ```
 
 ### TUI keybindings
@@ -69,6 +88,7 @@ skill-radar history
 | `D` | **delete ALL dead skills + all their copies** (the one-keystroke win) |
 | `space` | toggle mark |
 | `x` | delete all marked |
+| `/` | search/filter by name or description (Esc to clear) |
 | `r` | re-scan (score jumps live) |
 | `q` | quit |
 

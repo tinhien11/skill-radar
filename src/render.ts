@@ -142,3 +142,138 @@ export function renderDoctor(r: Report): string {
   lines.push("");
   return lines.join("\n");
 }
+
+// JSON output for scripting/automation. Strips ANSI, returns clean JSON.
+export function renderJson(r: Report): string {
+  return JSON.stringify({
+    health: {
+      score: r.health.healthScore,
+      totalSkills: r.health.totalSkills,
+      totalEntries: r.health.totalEntries,
+      wastedTokensPerTurn: r.health.wastedTokensPerTurn,
+      deadCount: r.health.deadCount,
+      duplicateCount: r.health.duplicateCount,
+      brokenCount: r.health.brokenCount,
+    },
+    trend: r.trend,
+    skills: r.health.scores.map((s) => ({
+      name: s.skill.name,
+      agent: s.skill.agent,
+      path: s.skill.skillPath,
+      isSymlink: s.skill.isSymlink,
+      hasSkillMd: s.skill.hasSkillMd,
+      description: s.skill.description,
+      usageCount: s.usageCount,
+      lastUsedTs: s.lastUsedTs,
+      lastUsedLabel: s.lastUsedLabel,
+      wasteScore: s.wasteScore,
+      verdict: s.verdict,
+      isDead: s.isDead,
+      isDuplicate: s.isDuplicate,
+      tokenCost: s.tokenCost,
+      sizeBytes: s.skill.sizeBytes,
+    })),
+    duplicates: r.duplicates.map((g) => ({
+      kind: g.kind,
+      name: g.name,
+      keepIndex: g.keepIndex,
+      members: g.members.map((m) => ({
+        agent: m.agent,
+        path: m.skillPath,
+        isSymlink: m.isSymlink,
+      })),
+    })),
+    issues: r.issues,
+    rootsScanned: r.health.totalEntries,
+  }, null, 2);
+}
+
+// Markdown report for sharing (teams, docs, GitHub).
+export function renderMarkdown(r: Report): string {
+  const h = r.health;
+  const lines: string[] = [];
+  lines.push("# Skill Radar Report");
+  lines.push("");
+  lines.push(`> Generated: ${new Date().toISOString()}`);
+  lines.push("");
+
+  lines.push("## Summary");
+  lines.push("");
+  lines.push(`| Metric | Value |`);
+  lines.push(`|--------|-------|`);
+  lines.push(`| Health Score | ${h.healthScore}/100 |`);
+  lines.push(`| Total Skills | ${h.totalSkills} |`);
+  lines.push(`| Dead Skills | ${h.deadCount} |`);
+  lines.push(`| Duplicates | ${h.duplicateCount} |`);
+  lines.push(`| Broken | ${h.brokenCount} |`);
+  lines.push(`| Wasted tokens/turn | ~${h.wastedTokensPerTurn} |`);
+  lines.push("");
+
+  if (r.trend) {
+    const t = r.trend;
+    lines.push("## Trend (vs last scan)");
+    lines.push("");
+    lines.push(`| Metric | Delta |`);
+    lines.push(`|--------|-------|`);
+    lines.push(`| Health | ${t.healthDelta >= 0 ? "+" : ""}${t.healthDelta} |`);
+    lines.push(`| Waste | ${t.wastedDelta >= 0 ? "+" : ""}${t.wastedDelta} |`);
+    lines.push(`| Dead | ${t.deadDelta >= 0 ? "+" : ""}${t.deadDelta} |`);
+    lines.push(`| Skills | ${t.skillsDelta >= 0 ? "+" : ""}${t.skillsDelta} |`);
+    lines.push("");
+  }
+
+  lines.push("## Waste Ranking (worst first)");
+  lines.push("");
+  lines.push(`| Skill | Waste | Last Used | Verdict | Agent |`);
+  lines.push(`|-------|-------|-----------|---------|-------|`);
+  for (const s of h.scores.slice(0, 20)) {
+    lines.push(`| ${s.skill.name} | ${s.wasteScore} | ${s.lastUsedLabel} | ${s.verdict} | ${s.skill.agent} |`);
+  }
+  if (h.scores.length > 20) {
+    lines.push(`| *...and ${h.scores.length - 20} more* | | | | |`);
+  }
+  lines.push("");
+
+  if (r.duplicates.length > 0) {
+    lines.push("## Duplicates");
+    lines.push("");
+    for (const g of r.duplicates) {
+      lines.push(`### ${g.kind}: \`${g.name}\``);
+      lines.push("");
+      g.members.forEach((m, i) => {
+        const mark = i === g.keepIndex ? "keep" : "dup";
+        lines.push(`- [${mark}] \`${m.agent}\` — ${m.skillPath}`);
+      });
+      lines.push("");
+    }
+  }
+
+  if (r.issues.length > 0) {
+    lines.push("## Structural Issues");
+    lines.push("");
+    lines.push(`| Severity | Agent | Path | Message |`);
+    lines.push(`|----------|-------|------|---------|`);
+    for (const i of r.issues) {
+      lines.push(`| ${i.severity} | ${i.agent} | ${i.skillPath} | ${i.message} |`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Recommendations");
+  lines.push("");
+  if (h.deadCount > 0) {
+    lines.push(`- **${h.deadCount} dead skills** — run \`skill-radar clean --dead --backup\` to remove them`);
+  }
+  if (h.duplicateCount > 0) {
+    lines.push(`- **${h.duplicateCount} duplicates** — run \`skill-radar clean --backup\` to deduplicate`);
+  }
+  if (h.brokenCount > 0) {
+    lines.push(`- **${h.brokenCount} broken symlinks** — run \`skill-radar clean --backup\` to clean up`);
+  }
+  if (h.deadCount === 0 && h.duplicateCount === 0 && h.brokenCount === 0) {
+    lines.push("- All clean! No action needed.");
+  }
+  lines.push("");
+
+  return lines.join("\n");
+}

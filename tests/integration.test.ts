@@ -619,3 +619,162 @@ describe("NL regex cap", () => {
     expect(() => readUsageWithSkills(names)).not.toThrow();
   });
 });
+
+describe("--json output mode", () => {
+  test("renderJson produces valid JSON with expected fields", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "json-test", "test skill for json", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderJson } = await import("../src/render.js");
+    const r = buildReport(false);
+    const json = renderJson(r);
+    const parsed = JSON.parse(json);
+
+    expect(parsed).toHaveProperty("health");
+    expect(parsed).toHaveProperty("skills");
+    expect(parsed).toHaveProperty("duplicates");
+    expect(parsed).toHaveProperty("issues");
+    expect(parsed.health).toHaveProperty("score");
+    expect(parsed.health).toHaveProperty("totalSkills");
+    expect(Array.isArray(parsed.skills)).toBe(true);
+    expect(parsed.skills.length).toBeGreaterThan(0);
+    expect(parsed.skills[0]).toHaveProperty("name");
+    expect(parsed.skills[0]).toHaveProperty("wasteScore");
+    expect(parsed.skills[0]).toHaveProperty("verdict");
+  });
+
+  test("renderJson has no ANSI escape codes", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "no-ansi", "check no ansi", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderJson } = await import("../src/render.js");
+    const r = buildReport(false);
+    const json = renderJson(r);
+    expect(json).not.toMatch(/\x1b\[/);
+  });
+});
+
+describe("renderMarkdown report", () => {
+  test("renderMarkdown produces valid markdown with expected sections", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "md-test", "test for markdown", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderMarkdown } = await import("../src/render.js");
+    const r = buildReport(false);
+    const md = renderMarkdown(r);
+
+    expect(md).toContain("# Skill Radar Report");
+    expect(md).toContain("## Summary");
+    expect(md).toContain("## Waste Ranking");
+    expect(md).toContain("## Recommendations");
+    expect(md).toContain("Health Score");
+    expect(md).toContain("|");
+  });
+
+  test("renderMarkdown has no ANSI escape codes", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "md-no-ansi", "no ansi in md", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderMarkdown } = await import("../src/render.js");
+    const r = buildReport(false);
+    const md = renderMarkdown(r);
+    expect(md).not.toMatch(/\x1b\[/);
+  });
+});
+
+describe("doctor --fix", () => {
+  test("clean with no dead flag only fixes broken + duplicates (not dead skills)", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "should-survive", "this should not be deleted", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: false, dryRun: false });
+    // Should not remove skills that aren't broken or duplicates
+    expect(existsSync(join(agentsDir, "should-survive"))).toBe(true);
+    expect(res.deadRemoved).toBe(0);
+  });
+
+  test("clean --dry-run does not delete anything", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "dry-run-test", "should survive dry run", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true, dryRun: true });
+    // dry-run should report counts but not actually delete
+    expect(existsSync(join(agentsDir, "dry-run-test"))).toBe(true);
+  });
+});
+
+describe("TUI search/filter logic", () => {
+  test("filtering rows by name works case-insensitively", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "SearchableSkill", "find me", "# body");
+    mkSkill(agentsDir, "other-skill", "not matching", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderJson } = await import("../src/render.js");
+    const r = buildReport(false);
+    const json = JSON.parse(renderJson(r));
+    const skills = json.skills;
+
+    // Simulate TUI search filter logic
+    const query = "searchable";
+    const filtered = skills.filter((s: { name: string; description: string }) =>
+      s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query),
+    );
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].name).toBe("SearchableSkill");
+  });
+
+  test("filtering rows by description works", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "desc-test", "unique keyword here", "# body");
+    mkSkill(agentsDir, "no-match", "different text", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderJson } = await import("../src/render.js");
+    const r = buildReport(false);
+    const json = JSON.parse(renderJson(r));
+    const skills = json.skills;
+
+    const query = "unique keyword";
+    const filtered = skills.filter((s: { name: string; description: string }) =>
+      s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query),
+    );
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].name).toBe("desc-test");
+  });
+
+  test("empty search query returns all rows", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "skill-a", "first", "# body");
+    mkSkill(agentsDir, "skill-b", "second", "# body");
+
+    const { buildReport } = await import("../src/report.js");
+    const { renderJson } = await import("../src/render.js");
+    const r = buildReport(false);
+    const json = JSON.parse(renderJson(r));
+    const skills = json.skills;
+
+    const query = "";
+    const filtered = query
+      ? skills.filter((s: { name: string; description: string }) =>
+          s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query),
+        )
+      : skills;
+    expect(filtered.length).toBe(skills.length);
+  });
+});
