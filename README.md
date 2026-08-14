@@ -88,7 +88,11 @@ It extracts `/skill-name` invocations and counts them + tracks last-used date. N
 
 ## Agents scanned
 
-`~/.agents/skills`, `~/.claude/skills`, `~/.config/devin/skills`, `~/.codex/skills`, `~/.cursor/skills`, `~/.codeium/windsurf/skills`, `~/.gemini/skills`, `~/.cline/skills`, `~/.continue/skills`, `~/.goose/skills`, `~/.opencode/skills`, `~/.roo/skills`, `~/.crush/skills`, `~/.kiro/skills`, and more. Honors `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`.
+**Global roots:** `~/.agents/skills`, `~/.claude/skills`, `~/.config/devin/skills`, `~/.codex/skills`, `~/.cursor/skills`, `~/.codeium/windsurf/skills`, `~/.gemini/skills`, `~/.cline/skills`, `~/.continue/skills`, `~/.goose/skills`, `~/.opencode/skills`, `~/.roo/skills`, `~/.crush/skills`, `~/.kiro/skills`, `~/.kimi-code/skills`, `~/.commandcode/skills`, and more. Honors `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`.
+
+**Plugin/marketplace discovery:** Recursively walks `~/.claude/plugins/` and `~/.kimi-code/plugins/` (up to 4 levels deep) to find nested `skills/` directories installed by plugin managers and marketplaces. No manual configuration needed.
+
+**Project-level roots:** Scans `.devin/skills`, `.agents/skills`, `.windsurf/skills`, and `.claude/skills` in the current working directory, so project-scoped skills show up too.
 
 ## License
 

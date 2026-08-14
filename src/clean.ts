@@ -7,9 +7,10 @@
 // the "I don't have time to delete one by one" command.
 
 import { lstatSync, unlinkSync, rmSync, existsSync, realpathSync } from "node:fs";
-import { scanAll, type Skill } from "./scanner.js";
+import { scanAll, uniqueSkills, type Skill } from "./scanner.js";
 import { findDuplicates } from "./dedup.js";
-import { readUsage } from "./usage.js";
+import { readUsageWithSkills } from "./usage.js";
+import { backupSkills, pruneBackups, type BackupResult } from "./backup.js";
 
 interface CleanAction {
   kind: "broken-symlink" | "duplicate-copy" | "dead-skill";
@@ -33,9 +34,10 @@ export interface CleanResult {
   totalAfter: number;
   actions: CleanAction[];
   errors: string[];
+  backup?: BackupResult;
 }
 
-export function clean(opts: { dead?: boolean; dryRun?: boolean } = {}): CleanResult {
+export function clean(opts: { dead?: boolean; dryRun?: boolean; backup?: boolean } = {}): CleanResult {
   const errors: string[] = [];
   const actions: CleanAction[] = [];
   const { skills: before } = scanAll();
@@ -74,7 +76,7 @@ export function clean(opts: { dead?: boolean; dryRun?: boolean } = {}): CleanRes
   // by name (same as TUI `D`). Off by default — dead is a softer signal.
   let deadNames = new Set<string>();
   if (opts.dead) {
-    const usage = readUsage();
+    const usage = readUsageWithSkills(uniqueSkills(before).map((s) => s.name));
     // A skill is "dead" if no manual invoke across any agent. Use unique skills
     // (by realPath) to decide, then remove all copies of that name.
     const seen = new Set<string>();
@@ -108,6 +110,20 @@ export function clean(opts: { dead?: boolean; dryRun?: boolean } = {}): CleanRes
 
   // Execute (or just count if dryRun).
   let brokenRemoved = 0, duplicatesRemoved = 0, deadRemoved = 0;
+  let backupResult: BackupResult | undefined;
+
+  // Back up skills that will be deleted (not in dry-run mode, and only if
+  // --backup flag is set). Broken symlinks don't need backup (no content).
+  if (!opts.dryRun && opts.backup) {
+    const toBackup = before.filter((s) =>
+      s.hasSkillMd && uniqueActions.some((a) => a.path === s.skillPath && a.kind !== "broken-symlink"),
+    );
+    if (toBackup.length > 0) {
+      backupResult = backupSkills(toBackup);
+      pruneBackups(10); // keep last 10 backups
+    }
+  }
+
   for (const a of uniqueActions) {
     if (opts.dryRun) {
       if (a.kind === "broken-symlink") brokenRemoved++;
@@ -139,5 +155,6 @@ export function clean(opts: { dead?: boolean; dryRun?: boolean } = {}): CleanRes
     totalAfter: after.length,
     actions: uniqueActions,
     errors,
+    backup: backupResult,
   };
 }

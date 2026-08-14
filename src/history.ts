@@ -5,14 +5,20 @@
 //
 // Stored at ~/.config/skill-radar/history.jsonl (XDG-friendly).
 
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const DIR = process.env.XDG_CONFIG_HOME
-  ? join(process.env.XDG_CONFIG_HOME, "skill-radar")
-  : join(homedir(), ".config", "skill-radar");
-const FILE = join(DIR, "history.jsonl");
+// Compute paths lazily so tests that override HOME/XDG_CONFIG_HOME see the
+// new paths on each call (module-level constants would cache the first value).
+function dir(): string {
+  return process.env.XDG_CONFIG_HOME
+    ? join(process.env.XDG_CONFIG_HOME, "skill-radar")
+    : join(homedir(), ".config", "skill-radar");
+}
+function file(): string { return join(dir(), "history.jsonl"); }
+function oldFile(): string { return join(dir(), "history.jsonl.old"); }
+const MAX_ENTRIES = 365;
 
 export interface Snapshot {
   ts: number;
@@ -27,18 +33,54 @@ export interface Snapshot {
 
 export function appendSnapshot(snap: Snapshot): void {
   try {
-    if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true });
-    appendFileSync(FILE, JSON.stringify(snap) + "\n", "utf8");
+    const d = dir();
+    if (!existsSync(d)) mkdirSync(d, { recursive: true });
+    appendFileSync(file(), JSON.stringify(snap) + "\n", "utf8");
+    // Rotate: if history exceeds MAX_ENTRIES, move old entries to .old file
+    // and keep only the most recent MAX_ENTRIES in the active file.
+    rotateIfNeeded();
   } catch {
     // best-effort — never break a scan because history write failed.
   }
 }
 
-export function readHistory(): Snapshot[] {
-  if (!existsSync(FILE)) return [];
+// If the history file has more than MAX_ENTRIES lines, move the oldest
+// entries to history.jsonl.old (appending if it already exists) and rewrite
+// the active file with only the most recent MAX_ENTRIES.
+function rotateIfNeeded(): void {
+  const f = file();
+  if (!existsSync(f)) return;
   let text: string;
   try {
-    text = readFileSync(FILE, "utf8");
+    text = readFileSync(f, "utf8");
+  } catch {
+    return;
+  }
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (lines.length <= MAX_ENTRIES) return;
+  // Split: oldest go to .old, newest stay in active file.
+  const keep = lines.slice(-MAX_ENTRIES);
+  const move = lines.slice(0, -MAX_ENTRIES);
+  // Append old entries to .old file (preserving history across rotations).
+  try {
+    appendFileSync(oldFile(), move.join("\n") + "\n", "utf8");
+  } catch {
+    // best-effort
+  }
+  // Rewrite active file with only kept entries.
+  try {
+    writeFileSync(f, keep.join("\n") + "\n", "utf8");
+  } catch {
+    // best-effort
+  }
+}
+
+export function readHistory(): Snapshot[] {
+  const f = file();
+  if (!existsSync(f)) return [];
+  let text: string;
+  try {
+    text = readFileSync(f, "utf8");
   } catch {
     return [];
   }

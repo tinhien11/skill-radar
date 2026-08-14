@@ -2,7 +2,7 @@
 // into one object the CLI/TUI consumes. Single source of truth for a run.
 
 import { scanAll, uniqueSkills, type Skill } from "./scanner.js";
-import { readUsage } from "./usage.js";
+import { readUsageWithSkills } from "./usage.js";
 import { findDuplicates } from "./dedup.js";
 import { doctor } from "./doctor.js";
 import { score as scoreAll, type HealthReport } from "./score.js";
@@ -20,7 +20,8 @@ export interface Report {
 
 export function buildReport(persist: boolean = true): Report {
   const { skills } = scanAll();
-  const usage = readUsage();
+  const skillNames = uniqueSkills(skills).map((s) => s.name);
+  const usage = readUsageWithSkills(skillNames);
   const duplicates = findDuplicates(skills);
   const issues = doctor(skills);
 

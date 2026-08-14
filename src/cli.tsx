@@ -88,8 +88,9 @@ program
   .description("Auto-fix: remove broken symlinks + duplicate copies (keep canonical). No TUI, no confirm.")
   .option("--dead", "also remove skills with no manual invoke (aggressive)")
   .option("--dry-run", "show what would be removed without deleting")
+  .option("--backup", "back up skills to ~/.local/share/skill-radar/backups/ before deleting")
   .action((opts) => {
-    const res = clean({ dead: opts.dead, dryRun: opts.dryRun });
+    const res = clean({ dead: opts.dead, dryRun: opts.dryRun, backup: opts.backup });
     const G = "\x1b[32m", R = "\x1b[31m", Y = "\x1b[33m", D = "\x1b[2m", B = "\x1b[1m", X = "\x1b[0m";
     const verb = opts.dryRun ? "would remove" : "removed";
     process.stdout.write(`\n  ${B}clean${X} ${D}${opts.dryRun ? "(dry run)" : ""}${X}\n\n`);
@@ -118,6 +119,9 @@ program
       process.stdout.write(`  ${G}nothing to clean — already tidy${X}\n`);
     }
     process.stdout.write(`\n  ${B}${res.totalBefore}→${res.totalAfter}${X} ${D}skill entries${X}\n`);
+    if (res.backup && res.backup.backedUp > 0) {
+      process.stdout.write(`  ${G}${res.backup.backedUp}${X} ${D}skills backed up to ${res.backup.backupDir}${X}\n`);
+    }
     if (res.errors.length > 0) {
       process.stdout.write(`\n  ${R}${res.errors.length} errors:${X}\n`);
       for (const e of res.errors) process.stdout.write(`    ${e}\n`);

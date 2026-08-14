@@ -1,6 +1,6 @@
 {
   "name": "skill-radar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cross-agent skill health radar for AI coding agents. Hook-free usage scoring from real prompt history, content-hash dedup, bulk cleanup TUI.",
   "type": "module",
   "bin": {

@@ -274,6 +274,22 @@ describe("usage reader", () => {
     const usage = readUsage();
     expect(usage.size).toBe(0);
   });
+
+  test("extracts skill name from pasted SKILL.md path", async () => {
+    mkdirSync(join(FAKE_HOME, ".claude"), { recursive: true });
+    writeFileSync(
+      join(FAKE_HOME, ".claude/history.jsonl"),
+      [
+        JSON.stringify({ display: "/data/projects/azr/.devin/skills/azr-workflow/SKILL.md\nload this skill", timestamp: 1700000000000 }),
+        JSON.stringify({ display: "some /other-skill text", timestamp: 1700000001000 }),
+      ].join("\n") + "\n",
+    );
+
+    const { readUsage } = await import("../src/usage.js");
+    const usage = readUsage();
+    expect(usage.get("azr-workflow")?.count).toBe(1);
+    expect(usage.get("azr-workflow")?.sources).toContain("claude");
+  });
 });
 
 describe("delete-by-name across agents (the bug fix)", () => {
@@ -394,5 +410,212 @@ describe("score", () => {
     const healthy = report.scores.find((s) => s.skill.name === "healthy");
     const dead = report.scores.find((s) => s.skill.name === "dead-one");
     expect(healthy!.wasteScore).toBeLessThan(dead!.wasteScore);
+  });
+});
+
+describe("plugin discovery (nested skill roots)", () => {
+  test("finds skills under ~/.claude/plugins/marketplaces/.../skills/", async () => {
+    // Simulate a Claude plugin marketplace tree:
+    //   ~/.claude/plugins/marketplaces/official/plugins/foo/skills/bar/SKILL.md
+    const pluginSkillsDir = join(FAKE_HOME, ".claude/plugins/marketplaces/official/plugins/foo/skills");
+    mkSkill(pluginSkillsDir, "plugin-skill", "a plugin skill");
+
+    const { scanAll } = await import("../src/scanner.js");
+    const { skills } = scanAll();
+    const found = skills.find((s) => s.name === "plugin-skill");
+    expect(found).toBeDefined();
+    expect(found!.agent).toBe("claude-plugin");
+  });
+
+  test("finds skills under ~/.kimi-code/plugins/managed/.../skills/", async () => {
+    const pluginSkillsDir = join(FAKE_HOME, ".kimi-code/plugins/managed/superpowers/skills");
+    mkSkill(pluginSkillsDir, "kimi-plugin-skill", "a kimi plugin skill");
+
+    const { scanAll } = await import("../src/scanner.js");
+    const { skills } = scanAll();
+    const found = skills.find((s) => s.name === "kimi-plugin-skill");
+    expect(found).toBeDefined();
+    expect(found!.agent).toBe("kimi-plugin");
+  });
+
+  test("does not treat a 'skills' dir without SKILL.md children as a root", async () => {
+    // A "skills" dir that's just an empty folder should not be scanned.
+    mkdirSync(join(FAKE_HOME, ".claude/plugins/foo/skills"), { recursive: true });
+    const { scanAll } = await import("../src/scanner.js");
+    const { skills } = scanAll();
+    // No skill should be found from this empty root.
+    expect(skills.find((s) => s.agent === "claude-plugin")).toBeUndefined();
+  });
+});
+
+describe("non-standard agent roots", () => {
+  test("finds skills in ~/.kimi-code/skills/", async () => {
+    const dir = join(FAKE_HOME, ".kimi-code/skills");
+    mkSkill(dir, "kimi-direct", "direct kimi skill");
+
+    const { scanAll } = await import("../src/scanner.js");
+    const { skills } = scanAll();
+    const found = skills.find((s) => s.name === "kimi-direct");
+    expect(found).toBeDefined();
+    expect(found!.agent).toBe("kimi-code");
+  });
+
+  test("finds skills in ~/.commandcode/skills/", async () => {
+    const dir = join(FAKE_HOME, ".commandcode/skills");
+    mkSkill(dir, "cc-skill", "commandcode skill");
+
+    const { scanAll } = await import("../src/scanner.js");
+    const { skills } = scanAll();
+    const found = skills.find((s) => s.name === "cc-skill");
+    expect(found).toBeDefined();
+    expect(found!.agent).toBe("commandcode");
+  });
+});
+
+describe("project-level skill roots", () => {
+  test("finds skills in ./.devin/skills/ from cwd", async () => {
+    // We can't easily change cwd in tests, but we can create the dir in the
+    // real cwd and clean up after. Instead, verify the candidate list includes
+    // project roots pointing to cwd.
+    const { candidateRoots } = await import("../src/agents.js");
+    const roots = candidateRoots();
+    const projectRoots = roots.filter((r) => r.scope === "project");
+    expect(projectRoots.length).toBeGreaterThanOrEqual(3);
+    expect(projectRoots.some((r) => r.agent === "project-devin")).toBe(true);
+    expect(projectRoots.some((r) => r.agent === "project-agents")).toBe(true);
+    expect(projectRoots.some((r) => r.agent === "project-windsurf")).toBe(true);
+  });
+});
+
+describe("backup before deletion", () => {
+  test("clean --backup copies skills before removing", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "to-delete", "will be deleted", "# body to preserve");
+
+    // Set up backup dir under FAKE_HOME
+    mkdirSync(join(FAKE_HOME, ".local/share/skill-radar/backups"), { recursive: true });
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true, backup: true });
+    expect(res.deadRemoved).toBeGreaterThanOrEqual(1);
+    expect(res.backup).toBeDefined();
+    expect(res.backup!.backedUp).toBeGreaterThanOrEqual(1);
+    // The skill should be gone from the original location
+    expect(existsSync(join(agentsDir, "to-delete"))).toBe(false);
+  });
+
+  test("clean without --backup does not create backup", async () => {
+    const agentsDir = join(FAKE_HOME, ".agents/skills");
+    mkdirSync(agentsDir, { recursive: true });
+    mkSkill(agentsDir, "no-backup", "no backup please", "# body");
+
+    const { clean } = await import("../src/clean.js");
+    const res = clean({ dead: true });
+    expect(res.backup).toBeUndefined();
+  });
+});
+
+describe("history rotation", () => {
+  test("history file rotates when exceeding MAX_ENTRIES", async () => {
+    // Write more than 365 entries to the history file, then trigger rotation
+    // by calling appendSnapshot.
+    const historyDir = join(FAKE_HOME, ".config", "skill-radar");
+    mkdirSync(historyDir, { recursive: true });
+    const historyFile = join(historyDir, "history.jsonl");
+
+    // Write 400 fake entries
+    const lines: string[] = [];
+    for (let i = 0; i < 400; i++) {
+      lines.push(JSON.stringify({
+        ts: 1700000000000 + i * 1000,
+        totalSkills: 10,
+        healthScore: 50,
+        wastedTokensPerTurn: 100,
+        deadCount: 5,
+        duplicateCount: 0,
+        brokenCount: 0,
+        deadNames: [],
+      }));
+    }
+    writeFileSync(historyFile, lines.join("\n") + "\n");
+
+    // Trigger rotation by appending one more snapshot
+    const { appendSnapshot, readHistory } = await import("../src/history.js");
+    appendSnapshot({
+      ts: Date.now(),
+      totalSkills: 10,
+      healthScore: 80,
+      wastedTokensPerTurn: 50,
+      deadCount: 2,
+      duplicateCount: 0,
+      brokenCount: 0,
+      deadNames: [],
+    });
+
+    // After rotation, active file should have at most 365 entries
+    const history = readHistory();
+    expect(history.length).toBeLessThanOrEqual(366); // 365 + the new one
+    expect(history.length).toBeGreaterThanOrEqual(365);
+
+    // Old file should exist with the overflowed entries
+    const oldFile = join(historyDir, "history.jsonl.old");
+    expect(existsSync(oldFile)).toBe(true);
+  });
+
+  test("history does not rotate when under limit", async () => {
+    const historyDir = join(FAKE_HOME, ".config", "skill-radar");
+    mkdirSync(historyDir, { recursive: true });
+    const historyFile = join(historyDir, "history.jsonl");
+
+    // Write only 10 entries
+    const lines: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      lines.push(JSON.stringify({
+        ts: 1700000000000 + i * 1000,
+        totalSkills: 5,
+        healthScore: 90,
+        wastedTokensPerTurn: 10,
+        deadCount: 0,
+        duplicateCount: 0,
+        brokenCount: 0,
+        deadNames: [],
+      }));
+    }
+    writeFileSync(historyFile, lines.join("\n") + "\n");
+
+    const { appendSnapshot, readHistory } = await import("../src/history.js");
+    appendSnapshot({
+      ts: Date.now(),
+      totalSkills: 5,
+      healthScore: 90,
+      wastedTokensPerTurn: 10,
+      deadCount: 0,
+      duplicateCount: 0,
+      brokenCount: 0,
+      deadNames: [],
+    });
+
+    const history = readHistory();
+    expect(history.length).toBe(11); // 10 + 1 new
+
+    // No old file should be created
+    const oldFile = join(historyDir, "history.jsonl.old");
+    expect(existsSync(oldFile)).toBe(false);
+  });
+});
+
+describe("NL regex cap", () => {
+  test("buildNlRegex handles 100+ skill names without crash", async () => {
+    // Generate 150 fake skill names
+    const names: string[] = [];
+    for (let i = 0; i < 150; i++) {
+      names.push(`skill-${i}-with-a-long-name`);
+    }
+
+    // We test indirectly via readUsageWithSkills — it should not throw
+    // even with 150 skill names.
+    const { readUsageWithSkills } = await import("../src/usage.js");
+    expect(() => readUsageWithSkills(names)).not.toThrow();
   });
 });
