@@ -43,13 +43,14 @@ program
   .command("scan")
   .description("One-shot health report (no TUI). Persists a snapshot for trend.")
   .option("--json", "output as JSON (for scripting/automation)")
+  .option("--all", "show all skills in waste ranking (default: top 20)")
   .action((opts) => {
     const r = buildReport(true);
     if (opts.json) {
       process.stdout.write(renderJson(r) + "\n");
     } else {
       process.stdout.write(renderSummary(r));
-      process.stdout.write(renderScoreTable(r, 20));
+      process.stdout.write(renderScoreTable(r, opts.all ? 9999 : 20));
     }
   });
 
@@ -391,6 +392,10 @@ program
     if (h.brokenCount === 0 && h.duplicateCount === 0 && h.deadCount === 0) {
       process.stdout.write(`  ${G}All clean! Run ${B}skill-radar${X} for the interactive TUI.${X}\n`);
     }
+    process.stdout.write(`\n  ${D}Other commands:${X}\n`);
+    process.stdout.write(`  ${D}  ${B}skill-radar security${X} — scan for prompt injection & malicious patterns${X}\n`);
+    process.stdout.write(`  ${D}  ${B}skill-radar restore${X} — list/restore backups${X}\n`);
+    process.stdout.write(`  ${D}  ${B}skill-radar scan --all${X} — show all skills (not just top 20)${X}\n`);
     process.stdout.write(`\n  ${D}Run ${B}skill-radar${X} for the TUI, or ${B}skill-radar scan${X} for a quick check.${X}\n\n`);
   });
 

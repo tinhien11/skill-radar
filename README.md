@@ -19,7 +19,7 @@ Every skill's `description` ships in the system prompt **every turn** — even s
 
 | | skills-janitor | skills-admin (skm) | skills-cleaner | **skill-radar** |
 |---|---|---|---|---|
-| Cross-agent | Claude + Codex | 53 agents | Claude only | **16+ agents** |
+| Cross-agent | Claude + Codex | 53 agents | Claude only | **53+ agents** |
 | Dedup | name + desc Jaccard | name only | AI similarity (costly) | **content-hash + symlink-aware** |
 | Usage scoring | transcript scan (Claude) | none | requires hooks | **prompt_history (Devin+Claude+Codex, no hook)** |
 | Trend / history | no | no | no | **yes — compounding** |
@@ -48,7 +48,8 @@ skill-radar init
 
 # one-shot health report (persists a snapshot for trend)
 skill-radar scan
-skill-radar scan --json    # JSON output for scripting/CI
+skill-radar scan --all        # show all skills (not just top 20)
+skill-radar scan --json       # JSON output for scripting/CI
 
 # full waste ranking (all skills)
 skill-radar score
@@ -124,7 +125,7 @@ It extracts `/skill-name` invocations and counts them + tracks last-used date. N
 
 ## Agents scanned
 
-**Global roots:** `~/.agents/skills`, `~/.claude/skills`, `~/.config/devin/skills`, `~/.codex/skills`, `~/.cursor/skills`, `~/.codeium/windsurf/skills`, `~/.gemini/skills`, `~/.cline/skills`, `~/.continue/skills`, `~/.goose/skills`, `~/.opencode/skills`, `~/.roo/skills`, `~/.crush/skills`, `~/.kiro/skills`, `~/.kimi-code/skills`, `~/.commandcode/skills`, and more. Honors `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`.
+**Global roots:** `~/.agents/skills`, `~/.claude/skills`, `~/.config/devin/skills`, `~/.codex/skills`, `~/.cursor/skills`, `~/.codeium/windsurf/skills`, `~/.gemini/skills`, `~/.cline/skills`, `~/.continue/skills`, `~/.goose/skills`, `~/.config/goose/skills`, `~/.opencode/skills`, `~/.config/opencode/skills`, `~/.roo/skills`, `~/.crush/skills`, `~/.config/crush/skills`, `~/.kiro/skills`, `~/.kimi-code/skills`, `~/.commandcode/skills`, `~/.copilot/skills`, `~/.factory/skills` (Droid), `~/.firebender/skills`, `~/.forge/skills`, `~/.junie/skills`, `~/.kilocode/skills`, `~/.kode/skills`, `~/.openhands/skills`, `~/.qwen/skills`, `~/.trae/skills`, `~/.zencoder/skills`, and more — **53+ agent roots** total. Honors `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`.
 
 **Plugin/marketplace discovery:** Recursively walks `~/.claude/plugins/` and `~/.kimi-code/plugins/` (up to 4 levels deep) to find nested `skills/` directories installed by plugin managers and marketplaces. No manual configuration needed.
 

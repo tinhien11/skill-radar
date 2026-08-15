@@ -100,7 +100,7 @@ export function renderScoreTable(r: Report, limit: number = 20): string {
   }
   lines.push(`  ${GRAY}└─────────────────────────────────┴──────┴──────────┴──────────────────────────┘${RESET}`);
   if (h.scores.length > limit) {
-    lines.push(`  ${DIM}…and ${h.scores.length - limit} more. Run \`skill-radar tui\` to see all.${RESET}`);
+    lines.push(`  ${DIM}…and ${h.scores.length - limit} more. Run \`skill-radar scan --all\` or \`skill-radar tui\` to see all.${RESET}`);
   }
   lines.push("");
   return lines.join("\n");
