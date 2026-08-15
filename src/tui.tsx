@@ -9,6 +9,7 @@
 //   x        delete all marked
 //   /        search/filter by name or description (Esc to clear)
 //   r        re-scan (score jumps live — the pleasure loop)
+//   s        toggle security view (prompt injection & malicious patterns)
 //   q        quit
 // The header shows health score + wasted tokens, updating after each delete.
 // The list is windowed (PAGE_SIZE rows visible) with a scroll indicator so all
@@ -22,6 +23,7 @@ import { buildReport, type Report } from "./report.js";
 import { scanAll } from "./scanner.js";
 import { renderSummary, renderScoreTable } from "./render.js";
 import { backupSkills, pruneBackups } from "./backup.js";
+import { scanSecurity, type SecurityFinding, type SecurityResult } from "./security.js";
 
 // Visible rows in the list window. Terminal height varies; 20 is a safe default
 // that leaves room for the header, trend, stat row, column header, and footer.
@@ -71,6 +73,8 @@ const App: React.FC = () => {
   const [inspect, setInspect] = useState(false); // 'i' toggles full-description view
   const [search, setSearch] = useState(""); // search query string
   const [searchMode, setSearchMode] = useState(false); // when true, typing builds search query
+  const [secView, setSecView] = useState(false); // 's' toggles security findings view
+  const [secResult, setSecResult] = useState<SecurityResult | null>(null);
   const { exit } = useApp();
 
   const refresh = useCallback(() => {
@@ -279,6 +283,21 @@ const App: React.FC = () => {
       refresh();
       return;
     }
+    if (input === "s") {
+      if (secView) {
+        setSecView(false);
+        setSecResult(null);
+        setMsg("");
+      } else {
+        setMsg("scanning for security issues…");
+        const sr = scanSecurity();
+        setSecResult(sr);
+        setSecView(true);
+        setInspect(false);
+        setMsg(`security: ${sr.risk} risk · ${sr.review} review · ${sr.pass} clean`);
+      }
+      return;
+    }
     if (input === "d") {
       const row = displayRows[cursor];
       if (!row) return;
@@ -358,16 +377,59 @@ const App: React.FC = () => {
         <Text dimColor>
           {"  "}
           {h.totalSkills} skills · {h.deadCount} dead · {h.duplicateCount} dups · {h.brokenCount} broken
+          {secResult && secResult.findings.length > 0 && (
+            <Text color="red"> · {secResult.findings.length} security findings</Text>
+          )}
         </Text>
       </Box>
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          {"  skill                               waste  used       verdict"}
-        </Text>
-      </Box>
-
-      {inspect && displayRows[cursor] ? (
+      {secView && secResult ? (
+        // Security view: list all findings grouped by skill.
+        <Box flexDirection="column" marginTop={1}>
+          <Box>
+            <Text bold color="red">  Security findings</Text>
+            <Text dimColor> — {secResult.scanned} scanned · </Text>
+            <Text color="red" bold>{secResult.risk} risk</Text>
+            <Text dimColor> · </Text>
+            <Text color="yellow" bold>{secResult.review} review</Text>
+            <Text dimColor> · </Text>
+            <Text color="green" bold>{secResult.pass} clean</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>  press s to return to skill list · q to quit</Text>
+          </Box>
+          {secResult.findings.length === 0 ? (
+            <Box marginTop={1}>
+              <Text color="green">  No security issues found. All {secResult.scanned} skills clean.</Text>
+            </Box>
+          ) : (
+            <Box flexDirection="column" marginTop={1}>
+              {secResult.findings.slice(0, PAGE_SIZE + 5).map((f, i) => (
+                <Box key={i} flexDirection="column">
+                  <Box>
+                    <Text color={f.severity === "HIGH" ? "red" : "yellow"} bold>
+                      {"  "}{f.severity === "HIGH" ? "RISK" : "REVIEW"}{" "}
+                    </Text>
+                    <Text color="cyan" bold>{f.skillName}</Text>
+                    <Text dimColor>  ({f.agent})  {f.file}</Text>
+                  </Box>
+                  <Box>
+                    <Text dimColor>    {f.title}</Text>
+                  </Box>
+                  <Box>
+                    <Text color="gray">    {truncate(f.evidence, 76)}</Text>
+                  </Box>
+                </Box>
+              ))}
+              {secResult.findings.length > PAGE_SIZE + 5 && (
+                <Box>
+                  <Text dimColor>  …and {secResult.findings.length - (PAGE_SIZE + 5)} more. Run `skill-radar security` for full list.</Text>
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      ) : inspect && displayRows[cursor] ? (
         // Inspect mode: full description + metadata for the cursor row.
         <Box flexDirection="column" marginTop={1}>
           <Box>
@@ -479,7 +541,7 @@ const App: React.FC = () => {
                   ? `  DELETE "${name}" (${copies.length} copies: ${agents.join("/")}) — backed up first? y/n`
                   : `  DELETE "${name}" — backed up first? y/n`;
               })()
-            : `  ↑↓/jk move · d delete · D DELETE ALL DEAD · i inspect · / search · r rescan · q quit`}
+            : `  ↑↓/jk move · d delete · D DELETE ALL DEAD · i inspect · s security · / search · r rescan · q quit`}
         </Text>
       </Box>
       {msg && (
