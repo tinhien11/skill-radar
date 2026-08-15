@@ -24,6 +24,8 @@ Every skill's `description` ships in the system prompt **every turn** — even s
 | Usage scoring | transcript scan (Claude) | none | requires hooks | **prompt_history (Devin+Claude+Codex, no hook)** |
 | Trend / history | no | no | no | **yes — compounding** |
 | TUI bulk delete | swipe (one-by-one) | no | no | **list + `D` nuke-all-dead** |
+| Backup + restore | no | no | no | **yes — manifest-based** |
+| Security scan | yes (prompt injection) | no | no | **yes — 16 patterns** |
 
 The moat: **history compounding**. Each scan appends a snapshot to `~/.config/skill-radar/history.jsonl`. Over time you see your hygiene trend — and that trend is the switching cost another tool can't reconstruct.
 
@@ -79,6 +81,15 @@ skill-radar report -o report.md  # write to file
 skill-radar autofix              # safe by default (backs up before deleting)
 skill-radar autofix --dry-run    # preview without changing
 skill-radar autofix --no-dead    # only fix broken + duplicates, keep dead skills
+
+# restore deleted skills from a backup
+skill-radar restore              # list available backups
+skill-radar restore <timestamp>  # restore a specific backup
+
+# security scan (prompt injection, hidden unicode, dangerous scripts)
+skill-radar security             # scan all installed skills
+skill-radar security --json      # JSON output for CI
+skill-radar security --path ~/Downloads/some-skill  # scan one directory
 ```
 
 ### TUI keybindings

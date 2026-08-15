@@ -15,6 +15,8 @@ import { scanAll } from "./scanner.js";
 import { candidateRoots } from "./agents.js";
 import { readUsageWithSkills } from "./usage.js";
 import { uniqueSkills } from "./scanner.js";
+import { listBackups, restoreBackup } from "./backup.js";
+import { scanSecurity } from "./security.js";
 
 const program = new Command();
 
@@ -244,6 +246,88 @@ program
       for (const e of res.errors) process.stdout.write(`    ${e}\n`);
     }
     process.stdout.write("\n");
+  });
+
+program
+  .command("restore")
+  .description("Restore skills from a backup. Lists backups if no timestamp given.")
+  .argument("[timestamp]", "backup timestamp (from `restore` with no args)")
+  .option("--list", "list available backups (default if no timestamp given)")
+  .option("--json", "output as JSON (for scripting/automation)")
+  .action((timestamp, opts) => {
+    const G = "\x1b[32m", R = "\x1b[31m", Y = "\x1b[33m", D = "\x1b[2m", B = "\x1b[1m", X = "\x1b[0m";
+    if (!timestamp) {
+      // List mode
+      const backups = listBackups();
+      if (opts.json) {
+        process.stdout.write(JSON.stringify(backups, null, 2) + "\n");
+        return;
+      }
+      if (backups.length === 0) {
+        process.stdout.write(`  ${D}No backups found.${X}\n  ${D}Backups are created by ${B}skill-radar clean --backup${X}${D} or ${B}skill-radar autofix${X}${D}.${X}\n\n`);
+        return;
+      }
+      process.stdout.write(`\n  ${B}Available backups${X} (newest first)\n\n`);
+      for (const b of backups) {
+        const size = b.size < 1024 ? `${b.size}B` : b.size < 1024 * 1024 ? `${Math.round(b.size / 1024)}KB` : `${Math.round(b.size / 1024 / 1024)}MB`;
+        process.stdout.write(`  ${Y}${b.timestamp}${X}  ${D}${size}${X}\n`);
+      }
+      process.stdout.write(`\n  ${D}Restore with: ${B}skill-radar restore <timestamp>${X}\n\n`);
+      return;
+    }
+    // Restore mode
+    const res = restoreBackup(timestamp);
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+      return;
+    }
+    process.stdout.write(`\n  ${B}restore${X} ${D}${timestamp}${X}\n\n`);
+    if (res.restored > 0) {
+      process.stdout.write(`  ${G}${res.restored}${X} ${D}skills restored${X}\n`);
+    }
+    if (res.skipped > 0) {
+      process.stdout.write(`  ${Y}${res.skipped}${X} ${D}skills skipped${X}\n`);
+    }
+    if (res.errors.length > 0) {
+      process.stdout.write(`\n  ${R}${res.errors.length} errors:${X}\n`);
+      for (const e of res.errors) process.stdout.write(`    ${e}\n`);
+    }
+    if (res.restored === 0 && res.errors.length === 0) {
+      process.stdout.write(`  ${R}Nothing restored.${X}\n`);
+    }
+    process.stdout.write("\n");
+  });
+
+program
+  .command("security")
+  .description("Heuristic security scan of skill content (prompt injection, hidden unicode, dangerous scripts).")
+  .option("--json", "output as JSON (for scripting/automation)")
+  .option("--path <dir>", "scan a specific directory instead of all agent skills")
+  .action((opts) => {
+    const res = scanSecurity(opts.path);
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+      return;
+    }
+    const G = "\x1b[32m", R = "\x1b[31m", Y = "\x1b[33m", D = "\x1b[2m", B = "\x1b[1m", C = "\x1b[36m", X = "\x1b[0m";
+    process.stdout.write(`\n  ${B}security scan${X}\n\n`);
+    process.stdout.write(`  Scanned: ${C}${res.scanned}${X}  ${R}RISK: ${res.risk}${X}  ${Y}REVIEW: ${res.review}${X}  ${G}PASS: ${res.pass}${X}\n\n`);
+
+    if (res.findings.length === 0) {
+      process.stdout.write(`  ${G}No security findings.${X}\n\n`);
+      return;
+    }
+
+    for (const f of res.findings) {
+      const sevColor = f.severity === "HIGH" ? R : Y;
+      const sevLabel = f.severity === "HIGH" ? "RISK" : "REVIEW";
+      process.stdout.write(`  ${sevColor}${sevLabel}${X} ${B}${f.skillName}${X} ${D}(${f.agent})${X}\n`);
+      process.stdout.write(`    ${D}${f.file}${X}\n`);
+      process.stdout.write(`    ${f.title}\n`);
+      // Truncate evidence to 120 chars
+      const ev = f.evidence.length > 120 ? f.evidence.slice(0, 120) + "…" : f.evidence;
+      process.stdout.write(`    ${D}"${ev}"${X}\n\n`);
+    }
   });
 
 program
