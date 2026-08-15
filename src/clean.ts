@@ -73,22 +73,23 @@ export function clean(opts: { dead?: boolean; dryRun?: boolean; backup?: boolean
   }
 
   // Pass 3 (optional --dead): skills with no manual invoke. Remove ALL copies
-  // by name (same as TUI `D`). Off by default — dead is a softer signal.
-  let deadNames = new Set<string>();
+  // by realPath (not by name — name-collision would delete an alive skill that
+  // shares a name with a dead one). Off by default — dead is a softer signal.
+  let deadRealPaths = new Set<string>();
   if (opts.dead) {
     const usage = readUsageWithSkills(uniqueSkills(before).map((s) => s.name));
     // A skill is "dead" if no manual invoke across any agent. Use unique skills
-    // (by realPath) to decide, then remove all copies of that name.
+    // (by realPath) to decide, then remove all copies sharing that realPath.
     const seen = new Set<string>();
     for (const s of before) {
       if (!s.hasSkillMd) continue;
       if (seen.has(s.realPath)) continue;
       seen.add(s.realPath);
       const u = usage.get(s.name.toLowerCase());
-      if (!u || u.count === 0) deadNames.add(s.name);
+      if (!u || u.count === 0) deadRealPaths.add(s.realPath);
     }
     for (const s of before) {
-      if (!deadNames.has(s.name)) continue;
+      if (!deadRealPaths.has(s.realPath)) continue;
       if (removePaths.has(s.skillPath)) continue; // already queued in pass 2
       actions.push({
         kind: "dead-skill",
@@ -146,13 +147,17 @@ export function clean(opts: { dead?: boolean; dryRun?: boolean; backup?: boolean
     }
   }
 
-  const { skills: after } = scanAll();
+  // In dry-run mode, nothing was actually deleted, so a fresh scan would
+  // return the same count. Compute the expected after-count instead.
+  const totalAfter = opts.dryRun
+    ? totalBefore - uniqueActions.length
+    : scanAll().skills.length;
   return {
     brokenRemoved,
     duplicatesRemoved,
     deadRemoved,
     totalBefore,
-    totalAfter: after.length,
+    totalAfter,
     actions: uniqueActions,
     errors,
     backup: backupResult,

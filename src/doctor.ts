@@ -26,6 +26,14 @@ export function doctor(skills: Skill[]): DoctorIssue[] {
         agent: s.agent,
         message: s.sizeBytes === 0 ? "empty directory (no SKILL.md)" : "missing SKILL.md",
       });
+    } else if (s.hasSkillMd && s.sizeBytes === 0) {
+      // SKILL.md exists but is empty (0 bytes) — no description, no body.
+      issues.push({
+        severity: "empty",
+        skillPath: s.skillPath,
+        agent: s.agent,
+        message: "SKILL.md is empty (0 bytes)",
+      });
     }
   }
   // Sort: broken first, then missing, then empty.

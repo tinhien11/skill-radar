@@ -2,7 +2,7 @@
 // Subcommands: scan, score, dedup, doctor, history, clean, report, init.
 
 import { Command } from "commander";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import { buildReport } from "./report.js";
 import {
   renderSummary, renderScoreTable, renderDuplicates, renderDoctor,
@@ -255,9 +255,7 @@ program
 
     // 1. Check agent roots
     const roots = candidateRoots();
-    const found = roots.filter((r) => {
-      try { return require("node:fs").existsSync(r.path); } catch { return false; }
-    });
+    const found = roots.filter((r) => existsSync(r.path));
     process.stdout.write(`  ${B}Agents detected${X}\n`);
     if (found.length === 0) {
       process.stdout.write(`  ${R}No agent skill directories found.${X}\n`);

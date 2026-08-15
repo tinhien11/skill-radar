@@ -3,7 +3,7 @@
 // apparent path (where the symlink lives) and the real path (what it points to)
 // so dedup can collapse symlink farms.
 
-import { readFileSync, readdirSync, lstatSync, realpathSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, lstatSync, realpathSync, existsSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { candidateRoots, type AgentRoot } from "./agents.js";
@@ -71,7 +71,8 @@ export function scanRoot(root: AgentRoot): Skill[] {
     }
     if (!st.isDirectory() && !st.isSymbolicLink()) continue;
     const skillMdPath = join(skillPath, "SKILL.md");
-    const hasSkillMd = existsSync(skillMdPath);
+    // existsSync returns true for directories too — verify it's a regular file.
+    const hasSkillMd = existsSync(skillMdPath) && statSync(skillMdPath).isFile();
     // Use lstatSync to detect symlinks — do NOT compare realpath !== skillPath,
     // because on macOS /var → /private/var so every dir under tmpdir() would
     // falsely appear as a symlink.
